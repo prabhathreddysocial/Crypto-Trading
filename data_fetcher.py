@@ -19,7 +19,7 @@ def get_bars(symbol: str, timeframe: str = "1H", days: int = LOOKBACK_DAYS) -> p
         bars.extend(data.get("bars", {}).get(symbol_key, []))
         next_token = data.get("next_page_token")
         if next_token:
-            params = {"page_token": next_token}
+            params = {"symbols": symbol, "page_token": next_token}
         else:
             break
 
