@@ -116,7 +116,6 @@ for pair in ["BTC/USD", "ETH/USD", "SOL/USD"]:
         continue
 
     df.index = pd.to_datetime(df.index, utc=True)
-    start_price = float(df["close"].iloc[0])
 
     fig = go.Figure()
 
@@ -127,15 +126,7 @@ for pair in ["BTC/USD", "ETH/USD", "SOL/USD"]:
         line=dict(color="#4C9BE8", width=1.5)
     ))
 
-    # $1,000 baseline as equivalent price
-    fig.add_hline(
-        y=start_price,
-        line_dash="dash", line_color="gray",
-        annotation_text=f"$1,000 entry baseline (${start_price:,.0f})",
-        annotation_position="bottom right"
-    )
-
-    # Buy/sell signals
+    # Buy/sell signals + first purchase baseline
     if not signals.empty:
         pair_sigs = signals[signals["pair"] == pair].copy()
         pair_sigs["timestamp"] = pd.to_datetime(pair_sigs["timestamp"], utc=True)
@@ -143,37 +134,50 @@ for pair in ["BTC/USD", "ETH/USD", "SOL/USD"]:
         buys = pair_sigs[pair_sigs["signal"] == "BUY"]
         sells = pair_sigs[pair_sigs["signal"] == "SELL"]
 
+        # Draw baseline at first ever buy
+        if not buys.empty:
+            first_buy_price = float(buys.iloc[0]["price"])
+            first_buy_time = buys.iloc[0]["timestamp"]
+            fig.add_shape(type="line",
+                x0=first_buy_time, x1=df.index[-1],
+                y0=first_buy_price, y1=first_buy_price,
+                line=dict(color="gray", dash="dash", width=1)
+            )
+            fig.add_annotation(
+                x=df.index[-1], y=first_buy_price,
+                text=f"First buy ${first_buy_price:,.2f}",
+                showarrow=False, xanchor="right",
+                font=dict(color="gray", size=11)
+            )
+
         if not buys.empty:
             fig.add_trace(go.Scatter(
                 x=buys["timestamp"], y=buys["price"],
                 mode="markers", name="BUY",
-                marker=dict(symbol="triangle-up", size=14, color="lime",
-                            line=dict(color="green", width=1))
+                marker=dict(symbol="triangle-up", size=14, color="green")
             ))
         if not sells.empty:
             fig.add_trace(go.Scatter(
                 x=sells["timestamp"], y=sells["price"],
                 mode="markers", name="SELL",
-                marker=dict(symbol="triangle-down", size=14, color="red",
-                            line=dict(color="darkred", width=1))
+                marker=dict(symbol="triangle-down", size=14, color="red")
             ))
 
-    # Mark current open position if any
+    # Mark current open position
     pair_symbol = pair.replace("/", "")
     for pos in (positions if isinstance(positions, list) else []):
         if pos["symbol"] == pair_symbol:
             fig.add_hline(
                 y=float(pos["avg_entry_price"]),
                 line_dash="dot", line_color="orange",
-                annotation_text=f"Open position @ ${float(pos['avg_entry_price']):,.2f}",
+                annotation_text=f"Open @ ${float(pos['avg_entry_price']):,.2f}",
                 annotation_position="top right"
             )
 
     fig.update_layout(
         height=320, margin=dict(l=0, r=0, t=30, b=0),
         xaxis_title="Date", yaxis_title="Price (USD)",
-        legend=dict(orientation="h"), plot_bgcolor="#0e1117",
-        paper_bgcolor="#0e1117", font_color="white"
+        legend=dict(orientation="h")
     )
     st.plotly_chart(fig, use_container_width=True)
 
