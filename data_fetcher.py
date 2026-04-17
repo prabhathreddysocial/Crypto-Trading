@@ -1,27 +1,25 @@
-import requests
 import pandas as pd
 from datetime import datetime, timezone, timedelta
-from config import ALPACA_KEY, ALPACA_SECRET, DATA_URL, LOOKBACK_DAYS
+from alpaca.data.historical import CryptoHistoricalDataClient
+from alpaca.data.requests import CryptoBarsRequest
+from alpaca.data.timeframe import TimeFrame
+from config import ALPACA_KEY, ALPACA_SECRET, LOOKBACK_DAYS
 
 
-def get_bars(symbol: str, timeframe: str = "1H", days: int = LOOKBACK_DAYS) -> pd.DataFrame:
-    start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    headers = {"APCA-API-KEY-ID": ALPACA_KEY, "APCA-API-SECRET-KEY": ALPACA_SECRET}
-    params = {"symbols": symbol, "timeframe": timeframe, "start": start, "limit": 10000}
+def get_bars(symbol: str, days: int = LOOKBACK_DAYS) -> pd.DataFrame:
+    client = CryptoHistoricalDataClient(ALPACA_KEY, ALPACA_SECRET)
+    start = datetime.now(timezone.utc) - timedelta(days=days)
+    request = CryptoBarsRequest(symbol_or_symbols=symbol, timeframe=TimeFrame.Day, start=start)
+    bars = client.get_crypto_bars(request)
+    df = bars.df
 
-    bars = []
-    r = requests.get(f"{DATA_URL}/bars", headers=headers, params=params)
-    r.raise_for_status()
-    data = r.json()
-    bars.extend(data.get("bars", {}).get(symbol, []))
-
-    if not bars:
+    if df.empty:
         return pd.DataFrame()
 
-    df = pd.DataFrame(bars)
-    df["t"] = pd.to_datetime(df["t"])
-    df.set_index("t", inplace=True)
-    df.rename(columns={"o": "open", "h": "high", "l": "low", "c": "close", "v": "volume"}, inplace=True)
+    if isinstance(df.index, pd.MultiIndex):
+        df = df.xs(symbol, level="symbol")
+
+    df = df.rename(columns={"open": "open", "high": "high", "low": "low", "close": "close", "volume": "volume"})
     return df[["open", "high", "low", "close", "volume"]].sort_index()
 
 
