@@ -1,13 +1,12 @@
 import json
-import google.generativeai as genai
+from google import genai as google_genai
 from groq import Groq
 from config import GEMINI_API_KEY, GROQ_API_KEY
 
 
 def ask_gemini(prompt: str) -> str:
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content(prompt)
+    client = google_genai.Client(api_key=GEMINI_API_KEY)
+    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     return response.text
 
 
