@@ -30,19 +30,19 @@ if bt.empty:
     st.warning("No data yet. Run main.py first.")
     st.stop()
 
-latest_ts = bt["timestamp"].max()
-latest = bt[bt["timestamp"] == latest_ts]
+latest = bt.sort_values("timestamp").groupby("pair").last().reset_index()
 
-st.subheader(f"Latest Run: {latest_ts[:19]} UTC")
+st.subheader(f"Latest Run: {bt['timestamp'].max()[:19]} UTC")
 
 col1, col2, col3 = st.columns(3)
 for i, pair in enumerate(["BTC/USD", "ETH/USD", "SOL/USD"]):
-    data = latest[latest["pair"] == pair]
+    data = bt[bt["pair"] == pair].sort_values("timestamp")
     col = [col1, col2, col3][i]
     with col:
         st.markdown(f"**{pair}**")
         if not data.empty:
             best = data.loc[data["total_return"].idxmax()]
+
             st.metric("Best Strategy", best["strategy"])
             st.metric("Total Return", f"{best['total_return']:.2f}%")
             st.metric("Sharpe", f"{best['sharpe']:.2f}")
