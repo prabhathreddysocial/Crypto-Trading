@@ -10,11 +10,10 @@ def get_bars(symbol: str, timeframe: str = "1H", days: int = LOOKBACK_DAYS) -> p
     params = {"symbols": symbol, "timeframe": timeframe, "start": start, "limit": 10000}
 
     bars = []
-    symbol_key = symbol.replace("/", "")
     r = requests.get(f"{DATA_URL}/bars", headers=headers, params=params)
     r.raise_for_status()
     data = r.json()
-    bars.extend(data.get("bars", {}).get(symbol_key, []))
+    bars.extend(data.get("bars", {}).get(symbol, []))
 
     if not bars:
         return pd.DataFrame()
