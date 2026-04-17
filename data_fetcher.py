@@ -9,7 +9,7 @@ from config import ALPACA_KEY, ALPACA_SECRET, LOOKBACK_DAYS
 def get_bars(symbol: str, days: int = LOOKBACK_DAYS) -> pd.DataFrame:
     client = CryptoHistoricalDataClient(ALPACA_KEY, ALPACA_SECRET)
     start = datetime.now(timezone.utc) - timedelta(days=days)
-    request = CryptoBarsRequest(symbol_or_symbols=symbol, timeframe=TimeFrame.Day, start=start)
+    request = CryptoBarsRequest(symbol_or_symbols=symbol, timeframe=TimeFrame.Hour, start=start)
     bars = client.get_crypto_bars(request)
     df = bars.df
 

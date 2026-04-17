@@ -3,6 +3,9 @@ from data_fetcher import get_bars, get_account
 from backtest import run_all
 from agent import analyze_backtest
 from logger import init_db, log_backtest, log_insight
+from trader import get_positions, manage_exits, execute_signal
+from indicators import add_indicators
+from strategies import signal_ema_crossover
 from config import PAIRS
 
 
@@ -23,7 +26,15 @@ def main():
     init_db()
 
     account = get_account()
-    print(f"\nAccount equity: ${float(account['equity']):,.2f}")
+    equity = float(account["equity"])
+    print(f"\nAccount equity: ${equity:,.2f}")
+
+    print("\n--- Managing exits ---")
+    positions = get_positions()
+    closed = manage_exits(positions)
+    if not closed:
+        print("  No exits triggered.")
+    positions = get_positions()
 
     for pair in PAIRS:
         print(f"\nFetching data for {pair}...")
@@ -38,6 +49,15 @@ def main():
         results = run_all(df)
         print_results(pair, results)
         log_backtest(pair, results)
+
+        print(f"\n--- EMA Crossover Signal for {pair} ---")
+        df_ind = add_indicators(df)
+        signals = signal_ema_crossover(df_ind)
+        latest_signal = int(signals.iloc[-1])
+        signal_label = {1: "BUY", -1: "SELL", 0: "HOLD"}.get(latest_signal, "HOLD")
+        print(f"  Signal: {signal_label}")
+        action = execute_signal(pair, latest_signal, df_ind, positions)
+        print(f"  Action: {action.upper()}")
 
         print(f"\nAsking AI brain to analyze {pair}...")
         insight = analyze_backtest(pair, results)

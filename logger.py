@@ -8,6 +8,16 @@ DB_PATH = "trading_log.db"
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.execute("""
+        CREATE TABLE IF NOT EXISTS trade_signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            pair TEXT,
+            strategy TEXT,
+            signal TEXT,
+            price REAL
+        )
+    """)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS backtest_runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT,
@@ -28,6 +38,16 @@ def init_db():
             insight TEXT
         )
     """)
+    conn.commit()
+    conn.close()
+
+
+def log_trade_signal(pair: str, strategy: str, signal: str, price: float):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "INSERT INTO trade_signals VALUES (NULL,?,?,?,?,?)",
+        (datetime.utcnow().isoformat(), pair, strategy, signal, price)
+    )
     conn.commit()
     conn.close()
 

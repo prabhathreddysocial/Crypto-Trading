@@ -12,5 +12,5 @@ BASE_URL = "https://paper-api.alpaca.markets"
 DATA_URL = "https://data.alpaca.markets/v1beta3/crypto/us"
 
 PAIRS = ["BTC/USD", "ETH/USD", "SOL/USD"]
-TIMEFRAME = "1Day"
-LOOKBACK_DAYS = 180
+TIMEFRAME = "1Hour"
+LOOKBACK_DAYS = 30
