@@ -1,0 +1,7 @@
+alpaca-py
+pandas
+ta
+requests
+google-generativeai
+groq
+python-dotenv
