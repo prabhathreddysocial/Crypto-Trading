@@ -10,13 +10,13 @@ def print_results(pair: str, results: dict):
     print(f"\n{'='*50}")
     print(f"  {pair} — Backtest Results")
     print(f"{'='*50}")
-    print(f"{'Strategy':<25} {'Trades':>6} {'Win%':>6} {'Avg%':>7} {'Total%':>8} {'Sharpe':>7}")
-    print("-" * 60)
+    print(f"{'Strategy':<25} {'Trades':>6} {'Win%':>6} {'Avg%':>7} {'Total%':>8} {'Sharpe':>7} {'Sortino':>8} {'MaxDD%':>7}")
+    print("-" * 75)
     for name, m in results.items():
         if "error" in m:
             print(f"{name:<25}  ERROR: {m['error']}")
         else:
-            print(f"{name:<25} {m['trades']:>6} {m['win_rate']:>5.1f}% {m['avg_pnl']:>6.2f}% {m['total_return']:>7.2f}% {m['sharpe']:>7.2f}")
+            print(f"{name:<25} {m['trades']:>6} {m['win_rate']:>5.1f}% {m['avg_pnl']:>6.2f}% {m['total_return']:>7.2f}% {m['sharpe']:>7.2f} {m['sortino']:>8.2f} {m['max_drawdown']:>6.2f}%")
 
 
 def main():
