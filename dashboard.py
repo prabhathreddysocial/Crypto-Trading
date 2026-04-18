@@ -243,9 +243,7 @@ for idx, pair in enumerate(["BTC/USD", "ETH/USD", "SOL/USD"]):
         fig.add_trace(go.Scatter(
             x=df.index, y=df["close"],
             mode="lines", name="Price",
-            line=dict(color=color, width=2),
-            fill="tozeroy",
-            fillcolor=f"rgba{tuple(list(bytes.fromhex(color[1:])) + [20])}"
+            line=dict(color="#4C9BE8", width=1.5)
         ))
 
         # Buy/sell markers
