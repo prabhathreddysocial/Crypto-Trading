@@ -2,24 +2,82 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 import requests
+from datetime import datetime, timezone, timedelta
 import sys
 sys.path.append("/home/srisaiprabhathreddygudipalli/Crypto-Trading")
 from data_fetcher import get_bars
 from config import ALPACA_KEY, ALPACA_SECRET, BASE_URL
 
 DB_PATH = "trading_log.db"
-BASELINE = 1000
+POSITION_SIZE = 1000
 HEADERS = {"APCA-API-KEY-ID": ALPACA_KEY, "APCA-API-SECRET-KEY": ALPACA_SECRET}
+PAIR_COLORS = {"BTC/USD": "#F7931A", "ETH/USD": "#627EEA", "SOL/USD": "#9945FF"}
 
-st.set_page_config(page_title="Crypto Trading Brain", layout="wide")
-st.title("Crypto Trading Research Dashboard")
+st.set_page_config(page_title="Crypto Trading Brain", layout="wide", initial_sidebar_state="collapsed")
+
+st.markdown("""
+<style>
+    .main { background-color: #f8f9fb; }
+    .block-container { padding: 1.5rem 2rem; }
+    .metric-card {
+        background: white;
+        border-radius: 14px;
+        padding: 18px 22px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+        margin-bottom: 12px;
+    }
+    .metric-label {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #888;
+        margin-bottom: 4px;
+    }
+    .metric-value {
+        font-size: 26px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0;
+    }
+    .metric-sub {
+        font-size: 13px;
+        margin-top: 2px;
+    }
+    .green { color: #16a34a; }
+    .red { color: #dc2626; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .section-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 24px 0 12px 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .pair-badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-right: 6px;
+    }
+    .stDataFrame { border-radius: 12px; overflow: hidden; }
+    div[data-testid="stHorizontalBlock"] { gap: 12px; }
+</style>
+""", unsafe_allow_html=True)
 
 
-def load_backtests():
+# --- Data loaders ---
+def load_completed_trades():
     conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql("SELECT * FROM backtest_runs ORDER BY timestamp DESC", conn)
+    try:
+        df = pd.read_sql("SELECT * FROM completed_trades ORDER BY exit_time DESC", conn)
+    except Exception:
+        df = pd.DataFrame()
     conn.close()
     return df
 
@@ -34,234 +92,312 @@ def load_signals():
     return df
 
 
-def load_completed_trades():
+def load_backtests():
     conn = sqlite3.connect(DB_PATH)
-    try:
-        df = pd.read_sql("SELECT * FROM completed_trades ORDER BY exit_time DESC", conn)
-    except Exception:
-        df = pd.DataFrame()
-    conn.close()
-    return df
-
-
-def get_best_strategy_per_pair():
-    conn = sqlite3.connect(DB_PATH)
-    result = {}
-    try:
-        for pair in ["BTC/USD", "ETH/USD", "SOL/USD"]:
-            row = conn.execute("""
-                SELECT strategy FROM backtest_runs
-                WHERE pair=? AND trades > 1
-                ORDER BY timestamp DESC, sharpe DESC LIMIT 1
-            """, (pair,)).fetchone()
-            result[pair] = row[0] if row else "EMA Crossover"
-    except Exception:
-        pass
-    conn.close()
-    return result
-
-
-def load_insights():
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql("SELECT * FROM agent_insights ORDER BY timestamp DESC", conn)
+    df = pd.read_sql("SELECT * FROM backtest_runs ORDER BY timestamp DESC", conn)
     conn.close()
     return df
 
 
 def get_positions():
     try:
-        r = requests.get(f"{BASE_URL}/v2/positions", headers=HEADERS)
-        return r.json()
+        r = requests.get(f"{BASE_URL}/v2/positions", headers=HEADERS, timeout=5)
+        data = r.json()
+        return data if isinstance(data, list) else []
     except Exception:
         return []
 
 
 def get_account():
     try:
-        r = requests.get(f"{BASE_URL}/v2/account", headers=HEADERS)
+        r = requests.get(f"{BASE_URL}/v2/account", headers=HEADERS, timeout=5)
         return r.json()
     except Exception:
         return {}
 
 
-bt = load_backtests()
-signals = load_signals()
-insights = load_insights()
-completed = load_completed_trades()
-positions = get_positions()
+def get_best_strategy(pair):
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        row = conn.execute("""
+            SELECT strategy FROM backtest_runs
+            WHERE pair=? AND trades > 1
+            ORDER BY timestamp DESC, sharpe DESC LIMIT 1
+        """, (pair,)).fetchone()
+        conn.close()
+        return row[0] if row else "EMA Crossover"
+    except Exception:
+        conn.close()
+        return "EMA Crossover"
+
+
+# --- Load all data ---
 account = get_account()
-best_strategies = get_best_strategy_per_pair()
+positions = get_positions()
+completed = load_completed_trades()
+signals = load_signals()
+bt = load_backtests()
 
-if bt.empty:
-    st.warning("No data yet. Run hourly_trader.py first.")
-    st.stop()
-
-# --- Account Summary ---
-st.subheader("Account Summary")
-c1, c2, c3, c4 = st.columns(4)
-equity = float(account.get("equity", 0))
-cash = float(account.get("cash", 0))
+equity = float(account.get("equity", 100000))
+cash = float(account.get("cash", 100000))
+start_equity = 100000
+all_time_pnl = equity - start_equity
+all_time_pct = (all_time_pnl / start_equity) * 100
+unrealized = sum(float(p.get("unrealized_pl", 0)) for p in positions)
 deployed = equity - cash
-total_pnl = completed["pnl_usd"].sum() if not completed.empty else 0
-c1.metric("Total Equity", f"${equity:,.2f}")
-c2.metric("Cash Available", f"${cash:,.2f}")
-c3.metric("Deployed", f"${deployed:,.2f}")
-c4.metric("Total Realised P&L", f"${total_pnl:+.2f}")
+today = datetime.now(timezone.utc).strftime("%b %d, %Y %H:%M UTC")
+wins = len(completed[completed["result"] == "WIN"]) if not completed.empty else 0
+total_trades = len(completed)
+win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
+biggest = max(positions, key=lambda x: abs(float(x.get("market_value", 0))), default=None)
+biggest_label = f"{biggest['symbol']} ({abs(float(biggest['market_value']))/equity*100:.1f}%)" if biggest else "—"
 
-# Active strategies
-st.markdown("**Active Strategy per Pair:**")
-s1, s2, s3 = st.columns(3)
-for col, pair in zip([s1, s2, s3], ["BTC/USD", "ETH/USD", "SOL/USD"]):
-    col.info(f"**{pair}**\n\n{best_strategies.get(pair, 'EMA Crossover')}")
+# --- Header ---
+st.markdown(f"""
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+  <div>
+    <span style="font-size:22px; font-weight:800; color:#1a1a2e;">📈 Crypto Trading Brain</span>
+  </div>
+  <div style="font-size:13px; color:#888;">{today} &nbsp;|&nbsp; Paper Trading</div>
+</div>
+""", unsafe_allow_html=True)
 
-st.divider()
+# --- Top metrics row ---
+c1, c2, c3, c4, c5 = st.columns(5)
+pnl_color = "green" if all_time_pnl >= 0 else "red"
+unreal_color = "green" if unrealized >= 0 else "red"
+
+with c1:
+    st.markdown(f"""<div class="metric-card">
+        <div class="metric-label"><span class="dot" style="background:#6366f1;"></span>Portfolio Value</div>
+        <div class="metric-value">${equity:,.2f}</div>
+    </div>""", unsafe_allow_html=True)
+with c2:
+    st.markdown(f"""<div class="metric-card">
+        <div class="metric-label"><span class="dot" style="background:#f59e0b;"></span>All-time P&L</div>
+        <div class="metric-value">${all_time_pnl:+,.2f}</div>
+        <div class="metric-sub {'green' if all_time_pnl>=0 else 'red'}">{all_time_pct:+.2f}%</div>
+    </div>""", unsafe_allow_html=True)
+with c3:
+    st.markdown(f"""<div class="metric-card">
+        <div class="metric-label"><span class="dot" style="background:#10b981;"></span>Unrealized P&L</div>
+        <div class="metric-value {unreal_color}">${unrealized:+,.2f}</div>
+    </div>""", unsafe_allow_html=True)
+with c4:
+    st.markdown(f"""<div class="metric-card">
+        <div class="metric-label"><span class="dot" style="background:#3b82f6;"></span>Cash Available</div>
+        <div class="metric-value">${cash:,.2f}</div>
+    </div>""", unsafe_allow_html=True)
+with c5:
+    st.markdown(f"""<div class="metric-card">
+        <div class="metric-label"><span class="dot" style="background:#8b5cf6;"></span>Deployed</div>
+        <div class="metric-value">${deployed:,.2f}</div>
+    </div>""", unsafe_allow_html=True)
+
+c6, c7, c8, c9 = st.columns(4)
+with c6:
+    st.markdown(f"""<div class="metric-card">
+        <div class="metric-label"><span class="dot" style="background:#ec4899;"></span>Open Positions</div>
+        <div class="metric-value">{len(positions)}</div>
+    </div>""", unsafe_allow_html=True)
+with c7:
+    st.markdown(f"""<div class="metric-card">
+        <div class="metric-label"><span class="dot" style="background:#10b981;"></span>Win Rate</div>
+        <div class="metric-value">{win_rate:.0f}%</div>
+        <div class="metric-sub" style="color:#888;">{wins}W / {total_trades - wins}L</div>
+    </div>""", unsafe_allow_html=True)
+with c8:
+    st.markdown(f"""<div class="metric-card">
+        <div class="metric-label"><span class="dot" style="background:#f97316;"></span>Total Trades</div>
+        <div class="metric-value">{total_trades}</div>
+    </div>""", unsafe_allow_html=True)
+with c9:
+    st.markdown(f"""<div class="metric-card">
+        <div class="metric-label"><span class="dot" style="background:#64748b;"></span>Biggest Holding</div>
+        <div class="metric-value" style="font-size:18px;">{biggest_label}</div>
+    </div>""", unsafe_allow_html=True)
+
+st.markdown("---")
+
+# --- Price Charts (past 7 days) ---
+st.markdown('<div class="section-title">📊 Price Charts — Past 7 Days</div>', unsafe_allow_html=True)
+
+chart_cols = st.columns(3)
+for idx, pair in enumerate(["BTC/USD", "ETH/USD", "SOL/USD"]):
+    with chart_cols[idx]:
+        color = PAIR_COLORS[pair]
+        best_strat = get_best_strategy(pair)
+        df = get_bars(pair, days=7)
+
+        if df.empty:
+            st.warning(f"No data for {pair}")
+            continue
+
+        df.index = pd.to_datetime(df.index, utc=True)
+        current_price = float(df["close"].iloc[-1])
+        start_price = float(df["close"].iloc[0])
+        change_pct = (current_price - start_price) / start_price * 100
+        change_color = "#16a34a" if change_pct >= 0 else "#dc2626"
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df["close"],
+            mode="lines", name="Price",
+            line=dict(color=color, width=2),
+            fill="tozeroy",
+            fillcolor=f"rgba{tuple(list(bytes.fromhex(color[1:])) + [20])}"
+        ))
+
+        # Buy/sell markers
+        if not signals.empty:
+            ps = signals[signals["pair"] == pair].copy()
+            ps["timestamp"] = pd.to_datetime(ps["timestamp"], utc=True)
+            ps = ps[ps["timestamp"] >= df.index[0]]
+            buys = ps[ps["signal"] == "BUY"]
+            sells = ps[ps["signal"] == "SELL"]
+            if not buys.empty:
+                fig.add_trace(go.Scatter(
+                    x=buys["timestamp"], y=buys["price"],
+                    mode="markers", name="BUY", showlegend=False,
+                    marker=dict(symbol="triangle-up", size=12, color="#16a34a")
+                ))
+            if not sells.empty:
+                fig.add_trace(go.Scatter(
+                    x=sells["timestamp"], y=sells["price"],
+                    mode="markers", name="SELL", showlegend=False,
+                    marker=dict(symbol="triangle-down", size=12, color="#dc2626")
+                ))
+
+        # Open position line
+        pair_sym = pair.replace("/", "")
+        for pos in positions:
+            if pos["symbol"] == pair_sym:
+                ep = float(pos["avg_entry_price"])
+                fig.add_hline(y=ep, line_dash="dot", line_color="orange",
+                    annotation_text=f"Open @ ${ep:,.0f}",
+                    annotation_position="top left",
+                    annotation_font_size=10)
+
+        fig.update_layout(
+            height=220, margin=dict(l=0, r=0, t=10, b=0),
+            plot_bgcolor="white", paper_bgcolor="white",
+            xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=9)),
+            yaxis=dict(showgrid=True, gridcolor="#f0f0f0", zeroline=False, tickfont=dict(size=9)),
+            showlegend=False
+        )
+
+        st.markdown(f"""
+        <div style="background:white; border-radius:14px; padding:14px 16px; box-shadow:0 1px 4px rgba(0,0,0,0.07);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <span style="font-weight:700; font-size:15px; color:#1a1a2e;">{pair}</span>
+                <span style="font-size:11px; color:#888;">Strategy: {best_strat}</span>
+            </div>
+            <div style="font-size:22px; font-weight:800; color:#1a1a2e;">${current_price:,.2f}</div>
+            <div style="font-size:13px; color:{change_color}; font-weight:600;">{change_pct:+.2f}% this week</div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+st.markdown("---")
 
 # --- Open Positions ---
-st.subheader("Open Positions")
-if not positions or isinstance(positions, dict):
-    st.info("No open positions right now — bot is watching and waiting for signals.")
-else:
+st.markdown('<div class="section-title">🔓 Open Positions</div>', unsafe_allow_html=True)
+if positions:
     for pos in positions:
-        symbol = pos["symbol"]
+        sym = pos["symbol"]
+        pair = sym[:3] + "/" + sym[3:]
         qty = float(pos["qty"])
         entry = float(pos["avg_entry_price"])
         current = float(pos["current_price"])
-        unreal_pl = float(pos["unrealized_pl"])
-        unreal_plpc = float(pos["unrealized_plpc"]) * 100
-        col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Symbol", symbol)
-        col2.metric("Entry Price", f"${entry:,.2f}")
-        col3.metric("Current Price", f"${current:,.2f}")
-        color = "green" if unreal_pl >= 0 else "red"
-        col4.metric("Unrealized P&L", f"${unreal_pl:,.2f}", f"{unreal_plpc:+.2f}%")
-        col5.metric("Qty", f"{qty:.6f}")
+        pl = float(pos["unrealized_pl"])
+        plpct = float(pos["unrealized_plpc"]) * 100
+        color = "#16a34a" if pl >= 0 else "#dc2626"
+        arrow = "▲" if pl >= 0 else "▼"
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.markdown(f"**{sym}**")
+        c2.markdown(f"Entry: **${entry:,.2f}**")
+        c3.markdown(f"Now: **${current:,.2f}**")
+        c4.markdown(f"<span style='color:{color}; font-weight:700;'>{arrow} ${pl:+,.2f}</span>", unsafe_allow_html=True)
+        c5.markdown(f"<span style='color:{color}; font-weight:700;'>{plpct:+.2f}%</span>", unsafe_allow_html=True)
+else:
+    st.info("No open positions — bot is watching for signals.")
 
-st.divider()
+st.markdown("---")
 
-# --- Price Charts ---
-st.subheader("Price Charts — Last 30 Days")
-
-for pair in ["BTC/USD", "ETH/USD", "SOL/USD"]:
-    st.markdown(f"#### {pair}")
-    with st.spinner(f"Loading {pair}..."):
-        df = get_bars(pair, days=30)
-
-    if df.empty:
-        st.warning(f"No data for {pair}")
-        continue
-
-    df.index = pd.to_datetime(df.index, utc=True)
-
-    fig = go.Figure()
-
-    # Price line
-    fig.add_trace(go.Scatter(
-        x=df.index, y=df["close"],
-        mode="lines", name="Price",
-        line=dict(color="#4C9BE8", width=1.5)
-    ))
-
-    # Buy/sell signals + first purchase baseline
-    if not signals.empty:
-        pair_sigs = signals[signals["pair"] == pair].copy()
-        pair_sigs["timestamp"] = pd.to_datetime(pair_sigs["timestamp"], utc=True)
-
-        buys = pair_sigs[pair_sigs["signal"] == "BUY"]
-        sells = pair_sigs[pair_sigs["signal"] == "SELL"]
-
-        # Draw baseline at first ever buy
-        if not buys.empty:
-            first_buy_price = float(buys.iloc[0]["price"])
-            first_buy_time = buys.iloc[0]["timestamp"]
-            fig.add_shape(type="line",
-                x0=first_buy_time, x1=df.index[-1],
-                y0=first_buy_price, y1=first_buy_price,
-                line=dict(color="gray", dash="dash", width=1)
-            )
-            fig.add_annotation(
-                x=df.index[-1], y=first_buy_price,
-                text=f"First buy ${first_buy_price:,.2f}",
-                showarrow=False, xanchor="right",
-                font=dict(color="gray", size=11)
-            )
-
-        if not buys.empty:
-            fig.add_trace(go.Scatter(
-                x=buys["timestamp"], y=buys["price"],
-                mode="markers", name="BUY",
-                marker=dict(symbol="triangle-up", size=14, color="green")
-            ))
-        if not sells.empty:
-            fig.add_trace(go.Scatter(
-                x=sells["timestamp"], y=sells["price"],
-                mode="markers", name="SELL",
-                marker=dict(symbol="triangle-down", size=14, color="red")
-            ))
-
-    # Mark current open position
-    pair_symbol = pair.replace("/", "")
-    for pos in (positions if isinstance(positions, list) else []):
-        if pos["symbol"] == pair_symbol:
-            fig.add_hline(
-                y=float(pos["avg_entry_price"]),
-                line_dash="dot", line_color="orange",
-                annotation_text=f"Open @ ${float(pos['avg_entry_price']):,.2f}",
-                annotation_position="top right"
-            )
-
-    fig.update_layout(
-        height=320, margin=dict(l=0, r=0, t=30, b=0),
-        xaxis_title="Date", yaxis_title="Price (USD)",
-        legend=dict(orientation="h")
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-st.divider()
-
-# --- Strategy Backtest Performance ---
-st.subheader("Strategy Backtest Performance")
-pairs_list = bt["pair"].unique().tolist()
-selected_pair = st.selectbox("Select Pair", pairs_list)
-pair_data = bt[bt["pair"] == selected_pair].copy()
-pair_data["timestamp"] = pd.to_datetime(pair_data["timestamp"])
-fig2 = px.line(
-    pair_data, x="timestamp", y="total_return", color="strategy",
-    title=f"{selected_pair} — Total Return % by Strategy (Backtest)",
-)
-st.plotly_chart(fig2, use_container_width=True)
-
-st.divider()
-
-# --- Completed Trades Table ---
-st.subheader("Transaction History")
+# --- Transaction History ---
+st.markdown('<div class="section-title">📋 Transaction History</div>', unsafe_allow_html=True)
 if not completed.empty:
     display = completed.copy()
     display["entry_time"] = display["entry_time"].str[:16]
     display["exit_time"] = display["exit_time"].str[:16]
-    display["pnl_usd"] = display["pnl_usd"].apply(lambda x: f"${x:+.2f}")
-    display["pnl_pct"] = display["pnl_pct"].apply(lambda x: f"{x:+.2f}%")
-    display["entry_price"] = display["entry_price"].apply(lambda x: f"${x:,.2f}")
-    display["exit_price"] = display["exit_price"].apply(lambda x: f"${x:,.2f}")
-    display = display.rename(columns={
-        "pair": "Pair", "strategy": "Strategy",
-        "entry_time": "Buy Time", "exit_time": "Sell Time",
-        "entry_price": "Buy Price", "exit_price": "Sell Price",
-        "pnl_usd": "P&L ($)", "pnl_pct": "P&L (%)", "result": "Result"
-    })
-    def color_result(val):
-        color = "green" if val == "WIN" else "red"
-        return f"color: {color}; font-weight: bold"
-    st.dataframe(
-        display[["Pair","Strategy","Buy Time","Buy Price","Sell Time","Sell Price","P&L ($)","P&L (%)","Result"]].style.applymap(color_result, subset=["Result"]),
-        use_container_width=True, hide_index=True
-    )
-else:
-    st.info("No completed trades yet — first trade will appear here once a buy and sell both happen.")
 
-st.divider()
+    def fmt_row(row):
+        pl_color = "#16a34a" if row["pnl_usd"] >= 0 else "#dc2626"
+        res_color = "#16a34a" if row["result"] == "WIN" else "#dc2626"
+        pair_color = PAIR_COLORS.get(row["pair"], "#888")
+        return f"""
+        <tr style="border-bottom:1px solid #f0f0f0;">
+            <td style="padding:10px 8px;"><span style="background:{pair_color}22; color:{pair_color}; padding:2px 8px; border-radius:10px; font-weight:600; font-size:12px;">{row['pair']}</span></td>
+            <td style="padding:10px 8px; font-size:12px; color:#555;">{row['strategy']}</td>
+            <td style="padding:10px 8px; font-size:12px;">{row['entry_time']}</td>
+            <td style="padding:10px 8px; font-weight:600;">${row['entry_price']:,.2f}</td>
+            <td style="padding:10px 8px; font-size:12px;">{row['exit_time']}</td>
+            <td style="padding:10px 8px; font-weight:600;">${row['exit_price']:,.2f}</td>
+            <td style="padding:10px 8px; font-weight:700; color:{pl_color};">${row['pnl_usd']:+.2f}</td>
+            <td style="padding:10px 8px; font-weight:700; color:{pl_color};">{row['pnl_pct']:+.2f}%</td>
+            <td style="padding:10px 8px;"><span style="color:{res_color}; font-weight:700;">{row['result']}</span></td>
+        </tr>"""
+
+    rows_html = "".join(display.apply(fmt_row, axis=1))
+    st.markdown(f"""
+    <div style="background:white; border-radius:14px; padding:16px; box-shadow:0 1px 4px rgba(0,0,0,0.07); overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse;">
+            <thead>
+                <tr style="border-bottom:2px solid #f0f0f0;">
+                    <th style="text-align:left; padding:8px; font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.05em;">Pair</th>
+                    <th style="text-align:left; padding:8px; font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.05em;">Strategy</th>
+                    <th style="text-align:left; padding:8px; font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.05em;">Buy Time</th>
+                    <th style="text-align:left; padding:8px; font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.05em;">Buy Price</th>
+                    <th style="text-align:left; padding:8px; font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.05em;">Sell Time</th>
+                    <th style="text-align:left; padding:8px; font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.05em;">Sell Price</th>
+                    <th style="text-align:left; padding:8px; font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.05em;">P&L ($)</th>
+                    <th style="text-align:left; padding:8px; font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.05em;">P&L (%)</th>
+                    <th style="text-align:left; padding:8px; font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.05em;">Result</th>
+                </tr>
+            </thead>
+            <tbody>{rows_html}</tbody>
+        </table>
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <div style="background:white; border-radius:14px; padding:24px; box-shadow:0 1px 4px rgba(0,0,0,0.07); text-align:center; color:#888;">
+        No completed trades yet — first trade will appear here once a buy and sell both happen.
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
 
 # --- AI Insights ---
-st.subheader("AI Brain Insights")
-for _, row in insights.head(10).iterrows():
-    with st.expander(f"{row['pair']} — {row['timestamp'][:19]}"):
-        st.write(row["insight"])
+st.markdown('<div class="section-title">🤖 AI Brain Insights</div>', unsafe_allow_html=True)
+conn = sqlite3.connect(DB_PATH)
+try:
+    ins = pd.read_sql("SELECT * FROM agent_insights ORDER BY timestamp DESC LIMIT 6", conn)
+except Exception:
+    ins = pd.DataFrame()
+conn.close()
+
+if not ins.empty:
+    cols = st.columns(3)
+    for i, (_, row) in enumerate(ins.iterrows()):
+        with cols[i % 3]:
+            pair_color = PAIR_COLORS.get(row["pair"], "#888")
+            st.markdown(f"""
+            <div style="background:white; border-radius:14px; padding:16px; box-shadow:0 1px 4px rgba(0,0,0,0.07); margin-bottom:12px;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="background:{pair_color}22; color:{pair_color}; padding:2px 10px; border-radius:10px; font-weight:700; font-size:12px;">{row['pair']}</span>
+                    <span style="font-size:11px; color:#aaa;">{row['timestamp'][:16]}</span>
+                </div>
+                <div style="font-size:13px; color:#444; line-height:1.5;">{row['insight'][:300]}...</div>
+            </div>
+            """, unsafe_allow_html=True)
