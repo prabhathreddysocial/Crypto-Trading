@@ -391,11 +391,13 @@ if not ins.empty:
         with cols[i % 3]:
             pair_color = PAIR_COLORS.get(row["pair"], "#888")
             st.markdown(f"""
-            <div style="background:white; border-radius:14px; padding:16px; box-shadow:0 1px 4px rgba(0,0,0,0.07); margin-bottom:12px;">
+            <div style="background:white; border-radius:14px; padding:16px; box-shadow:0 1px 4px rgba(0,0,0,0.07); margin-bottom:4px;">
                 <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
                     <span style="background:{pair_color}22; color:{pair_color}; padding:2px 10px; border-radius:10px; font-weight:700; font-size:12px;">{row['pair']}</span>
                     <span style="font-size:11px; color:#aaa;">{row['timestamp'][:16]}</span>
                 </div>
-                <div style="font-size:13px; color:#444; line-height:1.5;">{row['insight'][:300]}...</div>
+                <div style="font-size:13px; color:#444; line-height:1.5;">{row['insight'][:250]}...</div>
             </div>
             """, unsafe_allow_html=True)
+            with st.expander("Read full insight"):
+                st.markdown(row['insight'])
