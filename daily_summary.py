@@ -19,6 +19,28 @@ def get_history(pair: str) -> list:
     return [{"timestamp": r[0], "insight": r[1]} for r in rows]
 
 
+def get_long_term_memory() -> str:
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        weekly = conn.execute("""
+            SELECT content FROM memory WHERE type='weekly'
+            ORDER BY timestamp DESC LIMIT 1
+        """).fetchone()
+        monthly = conn.execute("""
+            SELECT content FROM memory WHERE type='monthly'
+            ORDER BY timestamp DESC LIMIT 1
+        """).fetchone()
+    except Exception:
+        weekly, monthly = None, None
+    conn.close()
+    parts = []
+    if monthly:
+        parts.append(f"MONTHLY KNOWLEDGE:\n{monthly[0][:600]}")
+    if weekly:
+        parts.append(f"LAST WEEKLY REVIEW:\n{weekly[0][:400]}")
+    return "\n\n".join(parts) if parts else ""
+
+
 def get_trades(pair: str) -> list:
     conn = sqlite3.connect(DB_PATH)
     try:
@@ -48,8 +70,9 @@ def run():
 
         history = get_history(pair)
         trades = get_trades(pair)
+        memory = get_long_term_memory()
 
-        insight = analyze_backtest(pair, results, history=history, trades=trades)
+        insight = analyze_backtest(pair, results, history=history, trades=trades, memory=memory)
         print(f"\n{insight}\n")
         log_insight(pair, insight)
 

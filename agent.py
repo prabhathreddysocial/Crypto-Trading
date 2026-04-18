@@ -27,7 +27,8 @@ def ask_brain(prompt: str) -> str:
         return ask_groq(prompt)
 
 
-def analyze_backtest(pair: str, results: dict, history: list = None, trades: list = None) -> str:
+def analyze_backtest(pair: str, results: dict, history: list = None, trades: list = None, memory: str = None) -> str:
+    memory_text = f"\n\nLONG-TERM MEMORY (confirmed rules & patterns):\n{memory}" if memory else ""
     history_text = ""
     if history:
         history_text = "\n\nPREVIOUS INSIGHTS (last 5 days):\n"
@@ -40,11 +41,12 @@ def analyze_backtest(pair: str, results: dict, history: list = None, trades: lis
         for t in trades:
             trades_text += f"- {t['entry_time'][:10]} BUY @ ${t['entry_price']:,.2f} → SELL @ ${t['exit_price']:,.2f} = {t['pnl_pct']:+.2f}% ({t['result']})\n"
 
-    prompt = f"""You are a quantitative crypto trading analyst. Be specific, data-driven, and cite exact numbers. Do NOT make vague statements. If you don't have enough data, say so explicitly.
+    prompt = f"""You are a quantitative crypto trading AI with long-term memory. Be specific, data-driven, cite exact numbers. Never make vague statements. If data is insufficient, say so explicitly.
 
 PAIR: {pair}
 TODAY'S BACKTEST RESULTS (30 days of hourly data):
 {json.dumps(results, indent=2)}
+{memory_text}
 
 METRICS GUIDE:
 - trades: number of completed trades (below 5 = unreliable)

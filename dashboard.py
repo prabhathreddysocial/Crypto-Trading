@@ -376,8 +376,46 @@ else:
 
 st.markdown("---")
 
+# --- Learning Log ---
+st.markdown('<div class="section-title">🧠 Knowledge Base — What the AI Has Learned</div>', unsafe_allow_html=True)
+conn2 = sqlite3.connect(DB_PATH)
+try:
+    memory_df = pd.read_sql("""
+        SELECT type, timestamp, content FROM memory
+        ORDER BY timestamp DESC LIMIT 10
+    """, conn2)
+except Exception:
+    memory_df = pd.DataFrame()
+conn2.close()
+
+if not memory_df.empty:
+    tab1, tab2 = st.tabs(["📅 Weekly Reviews", "📆 Monthly Reviews"])
+    with tab1:
+        weekly_mem = memory_df[memory_df["type"] == "weekly"]
+        if weekly_mem.empty:
+            st.info("First weekly review runs every Sunday midnight UTC.")
+        for _, row in weekly_mem.iterrows():
+            with st.expander(f"Week of {row['timestamp'][:10]}"):
+                st.markdown(row["content"])
+    with tab2:
+        monthly_mem = memory_df[memory_df["type"] == "monthly"]
+        if monthly_mem.empty:
+            st.info("First monthly review runs on the 1st of next month.")
+        for _, row in monthly_mem.iterrows():
+            with st.expander(f"Month of {row['timestamp'][:7]}"):
+                st.markdown(row["content"])
+else:
+    st.markdown("""
+    <div style="background:white; border-radius:14px; padding:20px; box-shadow:0 1px 4px rgba(0,0,0,0.07); color:#888; text-align:center;">
+        Knowledge base is empty — weekly reviews start Sunday, monthly on the 1st.<br>
+        The AI will accumulate confirmed rules and patterns here over time.
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
+
 # --- AI Insights ---
-st.markdown('<div class="section-title">🤖 AI Brain Insights</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">🤖 Daily AI Insights</div>', unsafe_allow_html=True)
 conn = sqlite3.connect(DB_PATH)
 try:
     ins = pd.read_sql("SELECT * FROM agent_insights ORDER BY timestamp DESC LIMIT 6", conn)
