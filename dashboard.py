@@ -34,6 +34,33 @@ def load_signals():
     return df
 
 
+def load_completed_trades():
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        df = pd.read_sql("SELECT * FROM completed_trades ORDER BY exit_time DESC", conn)
+    except Exception:
+        df = pd.DataFrame()
+    conn.close()
+    return df
+
+
+def get_best_strategy_per_pair():
+    conn = sqlite3.connect(DB_PATH)
+    result = {}
+    try:
+        for pair in ["BTC/USD", "ETH/USD", "SOL/USD"]:
+            row = conn.execute("""
+                SELECT strategy FROM backtest_runs
+                WHERE pair=? AND trades > 1
+                ORDER BY timestamp DESC, sharpe DESC LIMIT 1
+            """, (pair,)).fetchone()
+            result[pair] = row[0] if row else "EMA Crossover"
+    except Exception:
+        pass
+    conn.close()
+    return result
+
+
 def load_insights():
     conn = sqlite3.connect(DB_PATH)
     df = pd.read_sql("SELECT * FROM agent_insights ORDER BY timestamp DESC", conn)
@@ -60,8 +87,10 @@ def get_account():
 bt = load_backtests()
 signals = load_signals()
 insights = load_insights()
+completed = load_completed_trades()
 positions = get_positions()
 account = get_account()
+best_strategies = get_best_strategy_per_pair()
 
 if bt.empty:
     st.warning("No data yet. Run hourly_trader.py first.")
@@ -72,12 +101,18 @@ st.subheader("Account Summary")
 c1, c2, c3, c4 = st.columns(4)
 equity = float(account.get("equity", 0))
 cash = float(account.get("cash", 0))
-buying_power = float(account.get("buying_power", 0))
 deployed = equity - cash
+total_pnl = completed["pnl_usd"].sum() if not completed.empty else 0
 c1.metric("Total Equity", f"${equity:,.2f}")
 c2.metric("Cash Available", f"${cash:,.2f}")
 c3.metric("Deployed", f"${deployed:,.2f}")
-c4.metric("Last Run", bt["timestamp"].max()[:16] + " UTC")
+c4.metric("Total Realised P&L", f"${total_pnl:+.2f}")
+
+# Active strategies
+st.markdown("**Active Strategy per Pair:**")
+s1, s2, s3 = st.columns(3)
+for col, pair in zip([s1, s2, s3], ["BTC/USD", "ETH/USD", "SOL/USD"]):
+    col.info(f"**{pair}**\n\n{best_strategies.get(pair, 'EMA Crossover')}")
 
 st.divider()
 
@@ -197,12 +232,31 @@ st.plotly_chart(fig2, use_container_width=True)
 
 st.divider()
 
-# --- Trade Signal Log ---
-st.subheader("Trade Signal Log")
-if not signals.empty:
-    st.dataframe(signals.sort_values("timestamp", ascending=False), use_container_width=True)
+# --- Completed Trades Table ---
+st.subheader("Transaction History")
+if not completed.empty:
+    display = completed.copy()
+    display["entry_time"] = display["entry_time"].str[:16]
+    display["exit_time"] = display["exit_time"].str[:16]
+    display["pnl_usd"] = display["pnl_usd"].apply(lambda x: f"${x:+.2f}")
+    display["pnl_pct"] = display["pnl_pct"].apply(lambda x: f"{x:+.2f}%")
+    display["entry_price"] = display["entry_price"].apply(lambda x: f"${x:,.2f}")
+    display["exit_price"] = display["exit_price"].apply(lambda x: f"${x:,.2f}")
+    display = display.rename(columns={
+        "pair": "Pair", "strategy": "Strategy",
+        "entry_time": "Buy Time", "exit_time": "Sell Time",
+        "entry_price": "Buy Price", "exit_price": "Sell Price",
+        "pnl_usd": "P&L ($)", "pnl_pct": "P&L (%)", "result": "Result"
+    })
+    def color_result(val):
+        color = "green" if val == "WIN" else "red"
+        return f"color: {color}; font-weight: bold"
+    st.dataframe(
+        display[["Pair","Strategy","Buy Time","Buy Price","Sell Time","Sell Price","P&L ($)","P&L (%)","Result"]].style.applymap(color_result, subset=["Result"]),
+        use_container_width=True, hide_index=True
+    )
 else:
-    st.info("No signals yet — all strategies saying HOLD. First trade will appear here.")
+    st.info("No completed trades yet — first trade will appear here once a buy and sell both happen.")
 
 st.divider()
 
