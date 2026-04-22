@@ -62,7 +62,7 @@ def run():
     if not closed:
         print("  No exits triggered.")
     positions = get_positions()
-    open_symbols = {p["symbol"] for p in positions}
+    open_symbols = set(positions.keys())  # positions is a dict keyed by symbol
 
     for pair in PAIRS:
         alpaca_symbol = pair.replace("/", "")
