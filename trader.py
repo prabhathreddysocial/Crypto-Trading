@@ -64,16 +64,26 @@ def manage_exits(positions: dict, take_profit=0.06, stop_loss=0.03) -> list:
 def execute_signal(symbol: str, signal: int, df, positions: dict, strategy: str = "") -> str:
     alpaca_symbol = symbol.replace("/", "")
     current_price = float(df["close"].iloc[-1])
-    has_position = alpaca_symbol in positions
+    has_position = alpaca_symbol in (p["symbol"] for p in positions)
 
     if signal == 1 and not has_position:
-        print(f"    → BUY {symbol} @ ${current_price:,.2f} (${POSITION_SIZE_USD})")
-        place_order(symbol, "buy", POSITION_SIZE_USD, current_price)
-        return "bought"
+        print(f"    → Placing BUY {symbol} @ ${current_price:,.2f} (${POSITION_SIZE_USD})")
+        try:
+            order = place_order(symbol, "buy", POSITION_SIZE_USD, current_price)
+            print(f"    → Order placed: {order.get('id', 'unknown')} status={order.get('status')}")
+            return "bought"
+        except Exception as e:
+            print(f"    → BUY FAILED: {e}")
+            return f"failed: {e}"
 
     elif signal == -1 and has_position:
-        print(f"    → SELL {symbol} @ ${current_price:,.2f}")
-        close_position(symbol)
-        return "sold"
+        print(f"    → Placing SELL {symbol} @ ${current_price:,.2f}")
+        try:
+            result = close_position(symbol)
+            print(f"    → Position closed: {result}")
+            return "sold"
+        except Exception as e:
+            print(f"    → SELL FAILED: {e}")
+            return f"failed: {e}"
 
     return "hold"
