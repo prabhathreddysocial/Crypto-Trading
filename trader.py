@@ -23,18 +23,23 @@ def get_open_orders():
     return r.json()
 
 
-def place_order(symbol: str, side: str, usd_amount: float, current_price: float):
+def place_order(symbol: str, side: str, usd_amount: float, current_price: float = None):
+    """
+    Places a market order using notional (USD) amount.
+    `current_price` is kept for signature compatibility but unused — Alpaca
+    handles the conversion when notional is specified.
+    """
     alpaca_symbol = symbol.replace("/", "")
-    qty = round(usd_amount / current_price, 6)
     payload = {
         "symbol": alpaca_symbol,
-        "qty": str(qty),
+        "notional": str(round(usd_amount, 2)),   # dollar amount, no qty math needed
         "side": side,
         "type": "market",
         "time_in_force": "gtc",
     }
     r = requests.post(f"{BASE_URL}/v2/orders", headers=HEADERS, json=payload)
-    r.raise_for_status()
+    if not r.ok:
+        raise Exception(f"Alpaca order error {r.status_code}: {r.text}")
     return r.json()
 
 
@@ -62,9 +67,14 @@ def manage_exits(positions: dict, take_profit=0.06, stop_loss=0.03) -> list:
 
 
 def execute_signal(symbol: str, signal: int, df, positions: dict, strategy: str = "") -> str:
+    """
+    positions is a dict keyed by Alpaca symbol (e.g. "BTCUSD").
+    signal: 1 = buy, -1 = sell, 0 = hold.
+    Caller is responsible for gating on has_position before calling this.
+    """
     alpaca_symbol = symbol.replace("/", "")
     current_price = float(df["close"].iloc[-1])
-    has_position = alpaca_symbol in (p["symbol"] for p in positions)
+    has_position = alpaca_symbol in positions  # dict key lookup — O(1), correct
 
     if signal == 1 and not has_position:
         print(f"    → Placing BUY {symbol} @ ${current_price:,.2f} (${POSITION_SIZE_USD})")
