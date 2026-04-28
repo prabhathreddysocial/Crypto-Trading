@@ -1,16 +1,20 @@
 #!/bin/bash
 # Run this once on the VM to install the correct crontab.
+# Uses wrapper scripts (run_hourly, run_daily, etc.) so no .py
+# filenames appear in the crontab — avoiding any markdown conversion issues.
 # Usage: bash setup_cron.sh
 
-USER_HOME="/home/srisaiprabhathreddygudipalli"
-DIR="$USER_HOME/Crypto-Trading"
-PY="/usr/bin/python3"
+DIR="/home/srisaiprabhathreddygudipalli/Crypto-Trading"
 
+# Make wrapper scripts executable
+chmod +x "$DIR/run_hourly" "$DIR/run_daily" "$DIR/run_weekly" "$DIR/run_monthly"
+
+# Install clean crontab — no .py filenames anywhere
 crontab - <<CRON
-0 * * * * cd $DIR && $PY hourly_trader.py >> logs/hourly.log 2>&1
-0 0 * * * cd $DIR && $PY daily_summary.py >> logs/daily.log 2>&1
-0 0 * * 0 cd $DIR && $PY weekly_review.py >> logs/weekly.log 2>&1
-0 0 1 * * cd $DIR && $PY monthly_review.py >> logs/monthly.log 2>&1
+0 * * * * $DIR/run_hourly >> $DIR/logs/hourly.log 2>&1
+0 0 * * * $DIR/run_daily >> $DIR/logs/daily.log 2>&1
+0 0 * * 0 $DIR/run_weekly >> $DIR/logs/weekly.log 2>&1
+0 0 1 * * $DIR/run_monthly >> $DIR/logs/monthly.log 2>&1
 CRON
 
 echo "Crontab installed:"
