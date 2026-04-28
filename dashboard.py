@@ -3,8 +3,16 @@ Crypto Paper Trading Bot — Dashboard
 Streamlit + Plotly. Dark theme. Run with:  streamlit run dashboard.py
 """
 import os
+import sys
 import sqlite3
 from datetime import datetime, timedelta, timezone
+
+# Load .env BEFORE reading any env vars — must be first
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
+# Add project dir to path so local modules resolve correctly
+sys.path.insert(0, os.path.dirname(__file__))
 
 import numpy as np
 import pandas as pd
