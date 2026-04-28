@@ -6,6 +6,7 @@ from indicators import add_indicators
 from strategies import STRATEGIES
 from trader import get_positions, manage_exits, execute_signal
 from fear_greed import is_safe_to_buy
+from market_data import is_market_safe_to_buy
 from logger import init_db, log_trade_signal, log_completed_trade
 from config import PAIRS
 
@@ -119,6 +120,8 @@ def run():
                     print(f"  BUY skipped — already have position")
                 elif was_recently_signaled(pair, "BUY", hours=4):
                     print(f"  BUY skipped — fired within last 4h (cooldown)")
+                elif not is_market_safe_to_buy(pair):
+                    print(f"  BUY blocked — market data gate (funding/OI)")
                 else:
                     print(f"  ✅ BUY signal @ ${price:,.2f}")
                     result = execute_signal(pair, signal, df, positions, strategy=best)
