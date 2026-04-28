@@ -79,20 +79,28 @@ def manage_exits(positions: dict, take_profit=0.06, stop_loss=0.03,
             closed.append(symbol)
 
         else:
-            # Time-based exit: close if held too long without hitting TP/SL
-            created_at_str = pos.get("created_at") or pos.get("updated_at", "")
+            # Time-based exit: look up entry time from trade_signals DB
             try:
-                # Alpaca returns ISO format: "2026-04-22T18:48:18Z"
-                created_at = datetime.fromisoformat(
-                    created_at_str.replace("Z", "+00:00")
-                )
-                hold_hours = (now - created_at).total_seconds() / 3600
-                if hold_hours >= max_hold_hours:
-                    print(f"  TIME EXIT {symbol}: held {hold_hours:.1f}h (P&L: {pnl_pct*100:+.2f}%)")
-                    close_position(slash_symbol)
-                    closed.append(symbol)
+                import sqlite3
+                conn = sqlite3.connect("trading_log.db")
+                # slash_symbol is like "BTC/USD", pair stored as "BTC/USD"
+                row = conn.execute("""
+                    SELECT timestamp FROM trade_signals
+                    WHERE pair=? AND signal='BUY'
+                    ORDER BY timestamp DESC LIMIT 1
+                """, (slash_symbol,)).fetchone()
+                conn.close()
+                if row:
+                    entry_time = datetime.fromisoformat(row[0])
+                    if entry_time.tzinfo is None:
+                        entry_time = entry_time.replace(tzinfo=timezone.utc)
+                    hold_hours = (now - entry_time).total_seconds() / 3600
+                    if hold_hours >= max_hold_hours:
+                        print(f"  TIME EXIT {symbol}: held {hold_hours:.1f}h (P&L: {pnl_pct*100:+.2f}%)")
+                        close_position(slash_symbol)
+                        closed.append(symbol)
             except Exception:
-                pass  # skip time check if timestamp parse fails
+                pass  # skip time check if DB lookup fails
 
     return closed
 
