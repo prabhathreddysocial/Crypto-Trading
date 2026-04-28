@@ -49,18 +49,18 @@ ALPACA_SECRET = os.environ.get("ALPACA_SECRET", "")
 PAIRS = ["BTC/USD", "ETH/USD", "SOL/USD"]
 PAIR_TO_BINANCE = {"BTC/USD": "BTCUSDT", "ETH/USD": "ETHUSDT", "SOL/USD": "SOLUSDT"}
 
-# Color palette
+# Color palette — light theme
 C = {
-    "bg": "#0B0E11",
-    "card": "#151A21",
-    "border": "#232A33",
-    "text": "#E8ECF1",
-    "text_secondary": "#8B95A3",
-    "text_muted": "#5A6472",
-    "blue": "#4C9BE8",
-    "green": "#00C087",
-    "red": "#F6465D",
-    "amber": "#F0B90B",
+    "bg": "#F4F6F9",
+    "card": "#FFFFFF",
+    "border": "#E2E6ED",
+    "text": "#1A1D23",
+    "text_secondary": "#5A6478",
+    "text_muted": "#9AA0AD",
+    "blue": "#2563EB",
+    "green": "#059669",
+    "red": "#DC2626",
+    "amber": "#D97706",
     "btc": "#F7931A",
     "eth": "#627EEA",
     "sol": "#9945FF",
@@ -74,11 +74,13 @@ KNOWN_STRATEGIES = ["EMA Trend", "RSI Mean Reversion", "Volume Breakout", "Bolli
 def _base_layout(**overrides):
     base = dict(
         paper_bgcolor=C["card"],
-        plot_bgcolor=C["card"],
+        plot_bgcolor="#FAFBFD",
         font=dict(color=C["text"], family="Inter, system-ui, sans-serif", size=12),
         margin=dict(l=8, r=8, t=24, b=8),
-        xaxis=dict(gridcolor=C["border"], zerolinecolor=C["border"], linecolor=C["border"]),
-        yaxis=dict(gridcolor=C["border"], zerolinecolor=C["border"], linecolor=C["border"]),
+        xaxis=dict(gridcolor=C["border"], zerolinecolor=C["border"],
+                   linecolor=C["border"], tickfont=dict(color=C["text_secondary"])),
+        yaxis=dict(gridcolor=C["border"], zerolinecolor=C["border"],
+                   linecolor=C["border"], tickfont=dict(color=C["text_secondary"])),
         hovermode="x unified",
         showlegend=False,
     )
@@ -115,9 +117,9 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
 .card {{
     background: {C['card']};
     border: 1px solid {C['border']};
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 14px 16px;
-    box-shadow: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     margin-bottom: 10px;
 }}
 .card-tight {{ padding: 10px 12px; }}
