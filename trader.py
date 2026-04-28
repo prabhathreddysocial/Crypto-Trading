@@ -51,18 +51,49 @@ def close_position(symbol: str):
     return False
 
 
-def manage_exits(positions: dict, take_profit=0.06, stop_loss=0.03) -> list:
+def manage_exits(positions: dict, take_profit=0.06, stop_loss=0.03,
+                 max_hold_hours=72) -> list:
+    """
+    Exit rules (checked in priority order):
+    1. Take profit  : unrealized P&L >= +6%
+    2. Stop loss    : unrealized P&L <= -3%
+    3. Time exit    : position held longer than max_hold_hours (default 72h)
+       Prevents stale positions sitting idle for weeks with no TP/SL trigger.
+    """
+    from datetime import datetime, timezone
     closed = []
+    now = datetime.now(timezone.utc)
+
     for symbol, pos in positions.items():
         pnl_pct = float(pos["unrealized_plpc"])
+        slash_symbol = symbol.replace("USD", "/USD")
+
         if pnl_pct >= take_profit:
             print(f"  TAKE PROFIT {symbol}: +{pnl_pct*100:.2f}%")
-            close_position(symbol.replace("USD", "/USD"))
+            close_position(slash_symbol)
             closed.append(symbol)
+
         elif pnl_pct <= -stop_loss:
             print(f"  STOP LOSS {symbol}: {pnl_pct*100:.2f}%")
-            close_position(symbol.replace("USD", "/USD"))
+            close_position(slash_symbol)
             closed.append(symbol)
+
+        else:
+            # Time-based exit: close if held too long without hitting TP/SL
+            created_at_str = pos.get("created_at") or pos.get("updated_at", "")
+            try:
+                # Alpaca returns ISO format: "2026-04-22T18:48:18Z"
+                created_at = datetime.fromisoformat(
+                    created_at_str.replace("Z", "+00:00")
+                )
+                hold_hours = (now - created_at).total_seconds() / 3600
+                if hold_hours >= max_hold_hours:
+                    print(f"  TIME EXIT {symbol}: held {hold_hours:.1f}h (P&L: {pnl_pct*100:+.2f}%)")
+                    close_position(slash_symbol)
+                    closed.append(symbol)
+            except Exception:
+                pass  # skip time check if timestamp parse fails
+
     return closed
 
 
